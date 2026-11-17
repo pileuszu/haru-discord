@@ -12,9 +12,15 @@ case "$ACTION" in
     build-app)
         export PYTHON="$HARU_PROJECT_ROOT/scripts/app-python"
         exec .runtime/Haru/haru_mlx/swift/build_app.sh ;;
+    bot-setup) exec npm ci --cache "$UV_CACHE_DIR/../npm-cache" ;;
+    bot-doctor) exec npm run doctor ;;
+    bot-invite) exec node discord/register.mjs --invite ;;
+    bot-register) exec npm run register ;;
+    bot-smoke) exec node discord/smoke-bridge.mjs ;;
+    bot) exec npm start ;;
     app)
         APP="$HARU_PROJECT_ROOT/.runtime/Haru/haru_mlx/swift/build/Haru.app"
         [[ -d "$APP" ]] || { echo "Run ./scripts/haru build-app first." >&2; exit 1; }
         exec open "$APP" ;;
-    *) echo "Usage: ./scripts/haru {setup|download|smoke-ko|demo-voice|build-app|app}" ;;
+    *) echo "Usage: ./scripts/haru {setup|download|smoke-ko|demo-voice|build-app|app|bot-setup|bot-doctor|bot-invite|bot-register|bot-smoke|bot}" ;;
 esac

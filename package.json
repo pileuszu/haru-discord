@@ -1,0 +1,21 @@
+{
+  "name": "haru-discord",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "node discord/main.mjs",
+    "register": "node discord/register.mjs",
+    "doctor": "node discord/doctor.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@discordjs/voice": "0.19.2",
+    "discord.js": "14.28.1",
+    "prism-media": "1.3.5",
+    "opusscript": "0.0.8"
+  }
+}
