@@ -1,0 +1,7 @@
+{
+  "upstream_url": "https://github.com/higurashi-ai/Haru.git",
+  "upstream_revision": "7fe6b7665f8bf035998f401f8cb779fbe53f2751",
+  "model_repo": "higurashi-ai/Haru-4B",
+  "model_revision": "8d6e83bcd3701a76fc27a764965665da1df7da78",
+  "quantize": 8
+}

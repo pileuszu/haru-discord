@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+source "$(dirname "$0")/env.sh"
+cd "$HARU_PROJECT_ROOT"
+ACTION="${1:-help}"
+if [[ $# -gt 0 ]]; then shift; fi
+case "$ACTION" in
+    setup) exec ./scripts/setup.sh "$@" ;;
+    download) exec .venv/bin/python scripts/download_model.py "$@" ;;
+    smoke-ko) exec .venv/bin/python scripts/smoke_ko.py "$@" ;;
+    demo-voice) exec .venv/bin/python scripts/demo_voice.py "$@" ;;
+    build-app)
+        export PYTHON="$HARU_PROJECT_ROOT/scripts/app-python"
+        exec .runtime/Haru/haru_mlx/swift/build_app.sh ;;
+    app)
+        APP="$HARU_PROJECT_ROOT/.runtime/Haru/haru_mlx/swift/build/Haru.app"
+        [[ -d "$APP" ]] || { echo "Run ./scripts/haru build-app first." >&2; exit 1; }
+        exec open "$APP" ;;
+    *) echo "Usage: ./scripts/haru {setup|download|smoke-ko|demo-voice|build-app|app}" ;;
+esac
