@@ -1,6 +1,6 @@
 # haru-discord
 
-Haru-4B를 Apple Silicon의 MLX로 실행하고 한국어 음성 대화를 검증하는 프로젝트입니다. 로컬 실행과 Discord 음성 연결 코드를 포함합니다. 실제 봇 등록·서버 연결은 별도 계정 설정과 실접속 검증이 필요합니다.
+Haru-4B를 Apple Silicon의 MLX로 실행하고 한국어 음성 대화를 검증하는 프로젝트입니다. 로컬 실행과 Discord 음성 연결 코드를 포함합니다. 이 Mac에서는 Haru Voice 봇 등록과 Haru Lab 서버의 상태 명령 응답까지 확인했습니다. 실제 음성 통화는 후속 검증 대상입니다.
 
 자동 검증 결과와 한계는 [로컬 검증 기록](docs/local-validation.md)에 정리했습니다.
 
@@ -69,7 +69,7 @@ WAV/AIFF/FLAC은 기본 의존성으로 처리합니다. 다른 압축 포맷은
 
 이 Mac에서 봇과 MLX를 실행하고, 다른 기기에서 Discord 음성 채널에 들어가 `/haru join`으로 대화하는 구조입니다. Mac의 마이크나 공개 웹서버는 필요하지 않습니다.
 
-새 봇 생성, `.env` 설정, 서버 초대, 실행 절차는 [Discord 설정 안내](docs/discord-setup.md)를 참고하세요. 봇 등록과 실서버 음성 수신은 아직 확인되지 않았습니다. 먼저 로컬 연결을 `./scripts/haru bot-smoke`로 검증할 수 있습니다.
+새 봇 생성, `.env` 설정, 서버 초대, 실행 절차는 [Discord 설정 안내](docs/discord-setup.md)를 참고하세요. 봇 등록·서버 초대·실제 `/haru status` 응답은 확인했습니다. 실서버 음성 수신과 DAVE 음성 연결은 아직 확인하지 않았습니다. 먼저 로컬 연결을 `./scripts/haru bot-smoke`로 검증할 수 있습니다.
 
 ## 출처
 
