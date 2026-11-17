@@ -13,7 +13,7 @@
 ## 1. 새 Discord 봇 만들기
 
 1. [Discord Developer Portal](https://discord.com/developers/applications)에 로그인합니다.
-2. **New Application**에서 `Haru Discord`라는 앱을 만듭니다. 약관 동의가 표시되면 본인이 검토하고 진행합니다.
+2. **New Application**에서 `Haru Voice`라는 앱을 만듭니다. Discord는 앱 이름에 `Discord` 단어를 허용하지 않습니다. 약관 동의가 표시되면 본인이 검토하고 진행합니다.
 3. **General Information**의 **Application ID**를 복사합니다.
 4. **Bot**에서 봇 토큰을 생성합니다. 토큰 생성·재설정은 본인이 진행하며, 토큰은 채팅이나 Git에 올리지 않습니다.
 5. **Installation**에서 **Guild Install**을 사용합니다. 봇을 초대할 Discord 서버에 대한 관리 권한이 필요합니다.
