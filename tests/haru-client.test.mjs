@@ -91,14 +91,16 @@ test('fragmented ASSETS/HELLO/frame/text handshake and client AUDIO framing', as
   });
   const firstAudio = once(client, 'audio');
   const firstText = once(client, 'text');
+  const firstStep = once(client, 'step');
   assert.deepEqual(await client.start({ language: 'ko', speak_first: false }), hello);
-  assert.deepEqual(await requestSeen, { language: 'ko', speak_first: false });
+  assert.deepEqual(await requestSeen, { language: 'ko', speak_first: false, audio_first: true });
   assert.equal(client.assets.default_language, 'ko');
   const [pcm, metadata] = await firstAudio;
   assert.equal(pcm.length, 25600);
   assert.equal(pcm.readFloatLE(0), 0.25);
   assert.equal(metadata.index, 0);
   assert.equal(metadata.stepMs, 82);
+  assert.deepEqual(await firstStep, [{ index: 0, stepMs: 82 }]);
   assert.deepEqual(await firstText, ['안녕하세요']);
   const input = Buffer.alloc(3840);
   input.writeFloatLE(0.5);
@@ -184,4 +186,69 @@ test('malformed FRAME length terminates an active session', async (t) => {
 test('only local absolute Unix socket paths are accepted', () => {
   assert.throws(() => new HaruClient({ socketPath: 'tcp://localhost:8000' }), /local Unix/);
   assert.throws(() => new HaruClient({ socketPath: '/tmp/x', timeoutMs: 0 }), /timeoutMs/);
+});
+
+
+function completedStep(index, stepMs) {
+  const payload = Buffer.alloc(8);
+  payload.writeUInt32LE(index);
+  payload.writeFloatLE(stepMs, 4);
+  return message(0x16, payload);
+}
+
+test('negotiated audio-first delivers PCM while the token is pending', { timeout: 3000 }, async (t) => {
+  let peer;
+  const client = await fixture(t, (socket) => {
+    peer = socket;
+    readMessages(socket, (kind) => {
+      if (kind === 2) socket.write(message(0x10, { ...hello, audio_first: true }));
+    });
+    socket.write(message(0x13, {}));
+  });
+  const events = [];
+  for (const event of ['audio', 'step', 'text']) client.on(event, () => events.push(event));
+  await client.start();
+  const pcmArrived = once(client, 'audio');
+  peer.write(audioFrame());
+  const [pcm, frame] = await pcmArrived;
+  assert.equal(pcm.readFloatLE(0), .25);
+  assert.equal(frame.index, 0);
+  assert.equal(frame.audioReadyMs, 82);
+  assert.equal(frame.stepMs, undefined);
+  assert.deepEqual(events, ['audio']);
+
+  const step = once(client, 'step');
+  const text = once(client, 'text');
+  await fragmentedWrite(peer, Buffer.concat([completedStep(0, 91), message(0x12, Buffer.from('하루'))]));
+  assert.deepEqual(await step, [{ index: 0, stepMs: 91 }]);
+  assert.deepEqual(await text, ['하루']);
+  assert.deepEqual(events, ['audio', 'step', 'text']);
+});
+
+test('audio-first rejects mismatched or malformed completion messages', { timeout: 3000 }, async (t) => {
+  for (const [description, sequence] of [
+    ['next frame arrived before completion', [audioFrame(0), audioFrame(1)]],
+    ['late completion for wrong frame', [audioFrame(0), completedStep(1, 92)]],
+    ['completion before first PCM', [completedStep(0, 92)]],
+    ['text before completion', [audioFrame(0), message(0x12, Buffer.from('하루'))]],
+    ['malformed completion header', [audioFrame(0), message(0x16, Buffer.alloc(7))]],
+    ['invalid completed time', [audioFrame(0), completedStep(0, NaN)]],
+  ]) {
+    await t.test(description, async t => {
+      let peer;
+      const client = await fixture(t, socket => {
+        peer = socket;
+        readMessages(socket, kind => {
+          if (kind === 2) socket.write(message(0x10, { ...hello, audio_first: true }));
+        });
+        socket.write(message(0x13, {}));
+      });
+      await client.start();
+      const error = once(client, 'error');
+      peer.write(Buffer.concat(sequence));
+      const [failure] = await error;
+      assert.ok(failure instanceof Error);
+      assert.equal(client.ready, false);
+    });
+  }
 });

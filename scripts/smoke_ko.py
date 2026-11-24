@@ -24,14 +24,13 @@ from haru_mlx.prompt import card_templates, render_card
 from download_model import ROOT, model_path
 
 QUESTIONS = [
-    "안녕, 나는 민수야. 만나서 반가워. 너는 이름이 뭐야?",
-    "나는 주말에 공원에서 산책하는 걸 좋아해. 너는 쉬는 날에 뭐 해?",
-    "아까 내가 이름을 말했는데, 내 이름이 뭐였는지 기억나?",
+    "오늘 비가 오는데 나갈 때 뭘 챙길까?",
+    "빨간색이랑 파란색 중에 하나만 골라 줘.",
+    "내 이름은 민수야. 내 이름이 뭐야?",
 ]
 REFERENCE_TEXT = (
-    "안녕하세요. 저는 하루예요. 오늘 이렇게 만나서 정말 반가워요. "
-    "편안하게 이야기 나누면 좋겠어요. 저는 친구의 이야기를 듣는 걸 좋아해요. "
-    "날씨가 좋으면 함께 공원에 가서 산책하고 싶어요."
+    "오늘은 바람이 조금 불어서 창문을 일찍 닫았어요. "
+    "잠시 뒤에는 따뜻한 차를 마시면서 조용히 책을 읽었어요."
 )
 
 
@@ -81,16 +80,8 @@ def main() -> None:
         parts.extend([spoken, np.zeros(round(args.tail_seconds * SAMPLE_RATE), dtype=np.float32)])
         cursor += len(spoken) / SAMPLE_RATE + args.tail_seconds
     user_audio = np.concatenate(parts)
-    card = {
-        "name": "하루", "gender": "female", "other_name": "민수", "backchannel": "mid",
-        "persona": "스물네 살의 친근한 친구. 한국어로 편안하게 이야기하며 상대의 말을 잘 듣는다. 책 읽기와 산책을 좋아한다.",
-        "relationship": "오늘 처음 만나 서로 알아 가는 친구 사이이다.",
-        "situation": "민수와 한국어로 자기소개를 하고 주말 취미에 대해 편안하게 대화하고 있다.",
-    }
-    # Do not give the model the answer to the name-memory question in its prompt.
-    card.pop("other_name")
-    card["situation"] = "처음 만난 상대와 한국어로 자기소개를 하고 주말 취미에 대해 편안하게 대화하고 있다."
-    prompt = render_card(card, card_templates()["templates"]["ko"])
+    card = json.loads((ROOT / "discord" / "character-cards.json").read_text(encoding="utf-8"))["ko"]
+    prompt = render_card(card, card_templates()["templates"]["ko"]) if card is not None else ""
     (out / "card.txt").write_text(prompt, encoding="utf-8")
     (out / "input.json").write_text(json.dumps({
         "synthetic_input": args.input is None, "synthetic_reference": args.reference is None,

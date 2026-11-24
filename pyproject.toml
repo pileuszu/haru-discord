@@ -1,7 +1,7 @@
 [project]
 name = "haru-discord"
 version = "0.1.0"
-description = "Local Korean full-duplex speech with Haru MLX, preparing for Discord"
+description = "Local full-duplex Haru-4B MLX Discord voice bot"
 requires-python = ">=3.12,<3.13"
 dependencies = ["haru-speech-mlx"]
 

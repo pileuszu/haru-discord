@@ -5,6 +5,9 @@ cd "$HARU_PROJECT_ROOT"
 ACTION="${1:-help}"
 if [[ $# -gt 0 ]]; then shift; fi
 case "$ACTION" in
+    test)
+        node --test tests/*.test.mjs
+        exec .venv/bin/python -m unittest discover -s tests -p 'test_haru_*.py' "$@" ;;
     setup) exec ./scripts/setup.sh "$@" ;;
     download) exec .venv/bin/python scripts/download_model.py "$@" ;;
     smoke-ko) exec .venv/bin/python scripts/smoke_ko.py "$@" ;;
@@ -16,11 +19,12 @@ case "$ACTION" in
     bot-doctor) exec npm run doctor ;;
     bot-invite) exec node discord/register.mjs --invite ;;
     bot-register) exec npm run register ;;
-    bot-smoke) exec node discord/smoke-bridge.mjs ;;
+    bot-smoke) exec node discord/smoke-bridge.mjs "$@" ;;
+    session-smoke) exec node discord/smoke-session.mjs "$@" ;;
     bot) exec npm start ;;
     app)
         APP="$HARU_PROJECT_ROOT/.runtime/Haru/haru_mlx/swift/build/Haru.app"
         [[ -d "$APP" ]] || { echo "Run ./scripts/haru build-app first." >&2; exit 1; }
         exec open "$APP" ;;
-    *) echo "Usage: ./scripts/haru {setup|download|smoke-ko|demo-voice|build-app|app|bot-setup|bot-doctor|bot-invite|bot-register|bot-smoke|bot}" ;;
+    *) echo "Usage: ./scripts/haru {test|setup|download|smoke-ko|demo-voice|build-app|app|bot-setup|bot-doctor|bot-invite|bot-register|bot-smoke|session-smoke|bot}" ;;
 esac

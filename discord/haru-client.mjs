@@ -9,6 +9,7 @@ const FRAME = 0x11;
 const TEXT = 0x12;
 const ASSETS = 0x13;
 const ERROR = 0x14;
+const STEP = 0x16;
 const SAMPLE_RATE = 48000;
 const FRAME_SAMPLES = 6400;
 const FRAME_PCM_BYTES = FRAME_SAMPLES * 4;
@@ -17,7 +18,7 @@ const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_PENDING_AUDIO_BYTES = SAMPLE_RATE * 4 / 2;
 const PAYLOAD_LIMITS = new Map([
   [ASSETS, 512 * 1024], [HELLO, 16 * 1024], [FRAME, FRAME_PCM_BYTES + 8],
-  [TEXT, 64 * 1024], [ERROR, 16 * 1024],
+  [TEXT, 64 * 1024], [ERROR, 16 * 1024], [STEP, 8],
 ]);
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
@@ -35,6 +36,12 @@ function jsonObject(payload, label) {
     throw new Error(`${label} must contain a JSON object`);
   }
   return value;
+}
+
+function computeTime(payload) {
+  const ms = payload.readFloatLE(4);
+  if (!Number.isFinite(ms) || ms < 0) throw new Error('Invalid Haru frame compute time');
+  return ms;
 }
 
 /** One full-duplex session on the local upstream haru_mlx.native Unix socket. */
@@ -62,6 +69,7 @@ export class HaruClient extends EventEmitter {
     this._closeEmitted = false;
     this._sentAudioBytes = 0;
     this._lastFrameIndex = -1;
+    this._awaitingStep = false;
   }
 
   get ready() { return this._state === 'ready'; }
@@ -74,7 +82,7 @@ export class HaruClient extends EventEmitter {
     if (request === null || typeof request !== 'object' || Array.isArray(request)) {
       throw new TypeError('START request must be an object');
     }
-    const startPayload = Buffer.from(JSON.stringify(request));
+    const startPayload = Buffer.from(JSON.stringify({ audio_first: true, ...request }));
     if (startPayload.length > MAX_REQUEST_BYTES) throw new RangeError('START request is too large');
     this._state = 'awaiting-assets';
     this._startPayload = startPayload;
@@ -105,6 +113,7 @@ export class HaruClient extends EventEmitter {
         if (limit === undefined) throw new Error(`Unknown Haru message type: ${kind}`);
         if (length > limit) throw new Error(`Haru payload length ${length} exceeds limit ${limit}`);
         if (kind === FRAME && length !== FRAME_PCM_BYTES + 8) throw new Error('Invalid Haru FRAME payload length');
+        if (kind === STEP && length !== 8) throw new Error('Invalid Haru STEP payload length');
         if (this._buffer.length < 5 + length) return;
         const payload = this._buffer.subarray(5, 5 + length);
         this._buffer = this._buffer.subarray(5 + length);
@@ -144,17 +153,34 @@ export class HaruClient extends EventEmitter {
       return;
     }
     if (!this.ready) throw new Error('Haru sent audio/text before HELLO');
+    if (kind === STEP) {
+      const index = payload.readUInt32LE(0);
+      if (!this._awaitingStep || index !== this._lastFrameIndex) throw new Error('Unexpected Haru STEP index or order');
+      const stepMs = computeTime(payload);
+      this._awaitingStep = false;
+      this.emit('step', { index, stepMs });
+      return;
+    }
+    if (this._awaitingStep) throw new Error('Expected Haru STEP for the current FRAME');
     if (kind === TEXT) {
+      if (this.hello.audio_first === true && this._lastFrameIndex < 0) throw new Error('Haru sent TEXT before the first FRAME');
       this.emit('text', utf8.decode(payload));
       return;
     }
     if (kind === FRAME) {
       const index = payload.readUInt32LE(0);
-      const stepMs = payload.readFloatLE(4);
       if (index !== this._lastFrameIndex + 1) throw new Error('Haru FRAME index is out of sequence');
-      if (!Number.isFinite(stepMs) || stepMs < 0) throw new Error('Haru FRAME has invalid compute time');
+      const ms = computeTime(payload);
       this._lastFrameIndex = index;
-      this.emit('audio', payload.subarray(8), { index, stepMs, sampleRate: SAMPLE_RATE, frameSamples: FRAME_SAMPLES });
+      const metadata = { index, sampleRate: SAMPLE_RATE, frameSamples: FRAME_SAMPLES };
+      if (this.hello.audio_first === true) {
+        this._awaitingStep = true;
+        this.emit('audio', payload.subarray(8), { ...metadata, audioReadyMs: ms });
+      } else {
+        // Stock haru_mlx.native publishes audio when the whole step has finished.
+        this.emit('audio', payload.subarray(8), { ...metadata, stepMs: ms });
+        if (this.ready) this.emit('step', { index, stepMs: ms });
+      }
     }
   }
 

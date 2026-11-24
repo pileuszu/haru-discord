@@ -1,80 +1,66 @@
 # haru-discord
 
-Haru-4B를 Apple Silicon의 MLX로 실행하고 한국어 음성 대화를 검증하는 프로젝트입니다. 로컬 실행과 Discord 음성 연결 코드를 포함합니다. 이 Mac에서는 Haru Voice 봇 등록과 Haru Lab 서버의 상태 명령 응답까지 확인했습니다. 실제 음성 통화는 후속 검증 대상입니다.
+<img align="right" src="assets/haru-headset-cat.png" width="88" alt="하루의 고양이 프로필 사진">
 
-자동 검증 결과와 한계는 [로컬 검증 기록](docs/local-validation.md)에 정리했습니다.
+하루는 Apple Silicon Mac에서 실행하는 한국어 Discord 음성 봇입니다. 마이크로 “하루야, 7 더하기 5는 얼마야?”라고 묻거나 등록한 채팅 채널에 같은 질문을 쓰면, 하루가 연결된 음성 채널에서 “열둘이야”처럼 소리 내어 답합니다.
 
-## 로컬 환경
+| `HARU_VOICE_BACKEND` | 동작 |
+| --- | --- |
+| `gemma-yuna` | 한국어 대화에 사용하는 구성. Qwen3-ASR로 참가자별 음성을 전사하고 Gemma 4 E4B로 답을 생성해 macOS 유나 목소리로 읽습니다. 마이크와 채팅이 같은 통화의 문맥을 공유합니다. |
+| `haru` | 환경 설정의 기본값. 공식 Haru-4B MLX 8비트 모델이 참가자의 음성을 하나의 스트림으로 받아 직접 듣고 말합니다. 호출어 없이 대화하는 전이중 모델을 실험할 때 선택합니다. |
 
-- Apple Silicon Mac, macOS 14 이상(고정된 MLX 0.32.4 wheel 기준). 공식 native 앱은 실용 최소 메모리 16GB를 안내합니다.
-- 이 프로젝트의 초기 검증 장비: Mac mini M4 / 통합 메모리 32GB.
-- `uv`, Git, Xcode Command Line Tools 또는 Xcode.
-- Python 3.12.15, Haru 코드와 모델 revision은 각각 `.python-version`, `runtime.json`에 고정합니다. Python 패키지는 `uv.lock`으로 고정합니다.
-- 모델 약 10GB 외에 가상환경·캐시·빌드 공간이 필요합니다. `.runtime`, `.venv`, `artifacts`는 Git에서 제외합니다.
+## 설치와 실행
 
-```bash
-cd ~/repos/haru-discord
+Apple Silicon Mac, Git, Node.js 22.12 이상, Python 3.12와 `uv`를 준비합니다. Gemma·유나 모드는 음성 합성을 위해 macOS의 유나 음성과 Xcode 명령줄 도구도 사용합니다.
+
+```sh
+git clone https://github.com/pileuszu/haru-discord.git
+cd haru-discord
+./scripts/haru bot-setup
+cp -n .env.example .env
+chmod 600 .env
+```
+
+1. Discord Developer Portal에서 봇을 만들고 로컬 `.env`에 `DISCORD_TOKEN`, `DISCORD_APPLICATION_ID`, `DISCORD_GUILD_ID`를 설정합니다. 일반 채팅에 쓴 호출어를 읽게 하려면 앱의 **Bot → Message Content Intent**를 켭니다.
+2. **Gemma·유나**를 사용하려면 `HARU_VOICE_BACKEND=gemma-yuna`로 설정하고 STT와 Gemma 가중치, 유나 음성을 준비합니다. 동봉된 `stream-local/`을 사용하며, 별도 설치본을 쓸 때는 `HARU_STREAM_LOCAL_DIR`에 절대 경로를 지정합니다. [Gemma·유나 설치 및 모델 설정](stream-local/README.md)
+3. **Haru-4B**를 선택했다면 `HARU_VOICE_BACKEND=haru`를 유지하고 아래 명령을 실행합니다. 참조 음성을 직접 준비한 경우에는 마지막 명령 대신 사용할 권리가 있는 단일 화자 음성 파일을 `HARU_REFERENCE_PATH`에 지정합니다. 한국어와 8비트 설정은 각각 `HARU_LANGUAGE=ko`, `HARU_QUANTIZE=8`입니다. [참조 음성 준비](docs/voice-reference.md)
+
+```sh
+# Haru-4B 백엔드를 선택한 경우
 ./scripts/haru setup
 ./scripts/haru download
-./scripts/haru smoke-ko
+./scripts/haru demo-voice
 ```
 
-`setup`은 프로젝트 안에 공식 Haru 소스와 Python을 준비하고 `uv sync --locked`를 실행합니다. 기본 Python이나 시스템 패키지를 교체하지 않습니다. 다운로드한 모델은 `.runtime/huggingface`에 저장합니다. 모델이 준비된 이후 추론은 로컬에서 실행합니다.
+백엔드 준비가 끝나면 아래 명령을 순서대로 실행합니다. `bot-invite`가 출력한 링크를 서버 관리자가 열어 하루에게 **채널 보기·연결·말하기** 권한을 부여합니다. `bot-register`는 해당 서버에 슬래시 명령을 등록합니다. [Discord 설정 안내](docs/discord-setup.md)
 
-## 한국어 기능 검증
+```sh
+./scripts/haru bot-doctor
+./scripts/haru bot-invite
+./scripts/haru bot-register
+./scripts/haru bot
+```
 
-`smoke-ko`는 macOS의 한국어 합성 음성으로 질문 세 개를 만들고, 하나의 Haru 세션에서 입력합니다. 마이크는 사용하지 않습니다. 첫 질문의 사용자 이름은 캐릭터 프롬프트에 넣지 않아 마지막 기억 질문을 따로 확인할 수 있습니다. 질문 뒤에는 답변을 생성할 수 있도록 12초의 무음을 붙입니다.
+## Discord에서 대화하기
 
-Haru는 8-bit backbone으로 실행하며 음성 코덱과 음성 헤드는 원래 정밀도를 유지합니다. 첫 실행은 Metal 커널 컴파일과 프롬프트 처리 때문에 오래 걸릴 수 있습니다.
+1. 일반 음성 채널에 들어가 `/haru join`을 실행합니다. 서버 멤버 누구나 사용할 수 있습니다.
+2. Gemma·유나 모드에서 “하루야”, “하루”, “하루찡”, “하루짱”으로 말을 시작하세요. 이름부터 부르면 같은 사람이 5초 안에 시작한 다음 질문 한 건을 받습니다. 맥은 호출어를 알아듣기 위해 각 참가자의 음성을 실시간으로 전사합니다.
+3. 글로 묻고 싶다면 `/haru chat add`에서 일반·공지 채널 또는 음성 채널 안의 채팅을 선택합니다. 등록된 곳에 `하루야, 대한민국의 수도는 어디야?`처럼 쓰면 유나가 통화에서 답합니다. 마이크로 이어서 물어봐도 같은 사람의 발화로 기억합니다.
+4. 최신 뉴스나 날씨가 필요한 질문은 Gemma가 검색 여부를 판단합니다. 조회할 때는 통화에서 잠깐 기다려 달라고 한 뒤 검색어만 외부 서비스에 보냅니다.
 
-실행마다 `artifacts/ko-날짜-시간/`에 저장합니다.
-
-| 파일 | 내용 |
+| 명령 | 용도 |
 | --- | --- |
-| `input.wav`, `input.json` | 질문 음성 및 질문별 시점·합성 음성 여부 |
-| `reference.wav` | 검증용 참조 목소리 |
-| `reply.wav` | Haru의 24kHz 응답 음성 |
-| `conversation.wav` | 왼쪽 사용자 / 오른쪽 Haru 음성 |
-| `transcript.txt`, `transcript.jsonl` | 모델의 출력 텍스트와 프레임별 처리시간. 사용자 음성의 ASR 전사문은 아닙니다. |
-| `metrics.json` | 처리시간 p50/p95, MLX peak 메모리, 출력 신호 검사 |
-| `card.txt` | 실제 사용한 한국어 캐릭터 카드 |
+| `/haru join` · `/haru leave` | 내 음성 채널에서 대화를 시작하거나 현재 통화를 종료 |
+| `/haru status` · `/haru reset` | 음성 연결·처리 상태를 확인하거나 현재 문맥을 초기화하고 다시 연결 |
+| `/haru chat add` | 글로 하루를 부를 채널을 한 번에 최대 25개 선택 |
+| `/haru chat list` · `/haru chat remove` | 내가 볼 수 있는 등록 채널을 조회하거나 선택한 채널 해제 |
 
-자동 성공 판정은 **유효한 비무음 음성 및 한글 텍스트 생성**만 확인합니다. 질문 이해, 이름 기억, 발음의 자연스러움, 끼어들기 처리까지 통과했다는 의미가 아닙니다. 응답 텍스트와 음성을 함께 검토해야 합니다. 프레임 처리시간은 모델 계산시간이며 마이크부터 스피커까지의 실제 지연이 아닙니다.
+채팅 채널 목록은 처음에 비어 있고 재시작해도 유지됩니다. 일반·공지 채널의 작성자는 하루가 있는 음성 채널을 보고 입장할 권한이 있어야 합니다. 음성 채널에 딸린 채팅은 하루가 그 방에 들어와 있을 때 사용할 수 있습니다.
 
-본인의 녹음으로도 같은 경로를 시험할 수 있습니다. 참조 목소리는 사용할 권리가 있는 한 사람의 깨끗한 음성 3~180초를 사용합니다.
+## 개발과 검증
 
-```bash
-./scripts/haru smoke-ko --input /absolute/path/question.wav --reference /absolute/path/voice.wav
-```
+- Discord 명령·권한·음성 전송 테스트는 저장소 루트에서 `npm test`로 실행합니다.
+- Gemma·유나 Python 테스트는 설치 뒤 `cd stream-local`에서 `.venv/bin/python -m unittest discover`로 실행합니다. 같은 디렉터리의 브라우저 대화 화면에서도 모델의 입출력을 시험할 수 있습니다. [로컬 대화 도구](stream-local/README.md)
+- Haru-4B 환경에서는 `./scripts/haru test`로 Node·Python 테스트를, `./scripts/haru smoke-ko`로 실제 모델의 한국어 합성 입력 시험을 실행합니다. `bot-smoke`와 `session-smoke`는 각각 로컬 음성 브리지와 Discord 세션의 Opus 경로를 점검합니다. [Haru 분석](docs/haru-analysis.md) · [로컬 검증 기록](docs/local-validation.md)
 
-WAV/AIFF/FLAC은 기본 의존성으로 처리합니다. 다른 압축 포맷은 upstream에서 FFmpeg를 요구할 수 있습니다.
-
-## 마이크로 직접 대화하기
-
-```bash
-./scripts/haru demo-voice  # 선택: macOS Yuna 합성 음성을 로컬 기본 목소리로 준비
-./scripts/haru build-app
-./scripts/haru app
-```
-
-이 프로젝트는 공식 native macOS 앱을 빌드합니다. 프로젝트 전용 Python 래퍼를 통해 고정 모델과 캐시를 사용하고, 기본 언어는 한국어, 기본 정밀도는 int8로 시작합니다. 사용자가 앱 설정에서 정밀도를 바꾸면 그 선택을 전달합니다.
-
-`demo-voice`는 upstream의 Git 제외 경로에 한국어 기본 목소리를 만들며 기존 파일은 덮어쓰지 않습니다.
-
-앱에서 입력·출력 장치를 선택하고, 참조 목소리를 지정한 뒤 대화를 시작합니다. 마이크 권한 요청이 뜨면 직접 허용하세요. 녹음은 시작 버튼을 누른 뒤에 진행됩니다. 자동 검증용 `reference.wav`도 로컬 시험에 사용할 수 있지만 실제 목소리로 바꿔 대화 품질을 확인하는 것이 좋습니다. 헤드폰을 사용하면 스피커 소리가 다시 입력되는 것을 줄일 수 있습니다.
-
-앱을 종료하면 앱이 시작한 모델 서버도 종료합니다. 로그는 공식 앱 기준 `~/Library/Logs/Haru/app.log`에 남습니다. `./scripts/haru app` 전에 모델 다운로드와 빌드를 마쳐야 합니다. 프로젝트 경로를 바꾸면 Python 경로가 앱에 기록되므로 다시 빌드하세요.
-
-## 다른 기기의 Discord에서 대화하기
-
-이 Mac에서 봇과 MLX를 실행하고, 다른 기기에서 Discord 음성 채널에 들어가 `/haru join`으로 대화하는 구조입니다. Mac의 마이크나 공개 웹서버는 필요하지 않습니다.
-
-새 봇 생성, `.env` 설정, 서버 초대, 실행 절차는 [Discord 설정 안내](docs/discord-setup.md)를 참고하세요. 봇 등록·서버 초대·실제 `/haru status` 응답은 확인했습니다. 실서버 음성 수신과 DAVE 음성 연결은 아직 확인하지 않았습니다. 먼저 로컬 연결을 `./scripts/haru bot-smoke`로 검증할 수 있습니다.
-
-## 출처
-
-- [Haru 공식 저장소](https://github.com/higurashi-ai/Haru)
-- [MLX 구현](https://github.com/higurashi-ai/Haru/tree/main/haru_mlx)
-- [Haru-4B 모델 카드](https://huggingface.co/higurashi-ai/Haru-4B)
-
-Haru 코드와 모델은 Apache-2.0으로 공개되어 있으며 제3자 구성요소 고지는 upstream에 포함되어 있습니다. 모델과 생성한 음성은 이 저장소에 재배포하지 않습니다.
+Haru-4B 실험에 사용하는 공식 코드와 가중치의 리비전은 `runtime.json`에 고정돼 있습니다. [Haru 공식 코드](https://github.com/higurashi-ai/Haru) · [Haru-4B 모델 카드](https://huggingface.co/higurashi-ai/Haru-4B) · [공식 기술 블로그](https://blog.higurashi.ai/melte/haru4b/)

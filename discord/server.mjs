@@ -4,10 +4,16 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ROOT } from './config.mjs';
+import { modelEnvironment, streamEnvironment } from './worker-env.mjs';
 
 export class HaruServer extends EventEmitter {
-  constructor() {
+  constructor({ language = 'ko', quantize = 8, streamDir = null } = {}) {
     super();
+    if (!['ko', 'ja'].includes(language) || ![8, null].includes(quantize)) throw new Error('Invalid Haru server configuration.');
+    this.streamDir = streamDir;
+    this.name = streamDir ? 'Gemma · 유나' : 'Haru MLX';
+    this.language = language;
+    this.quantize = quantize;
     this.socketPath = join(tmpdir(), `haru-discord-${process.getuid?.() ?? 'user'}-${process.pid}.sock`);
     this.ready = false;
     this.child = null;
@@ -22,24 +28,27 @@ export class HaruServer extends EventEmitter {
     return this.pending;
   }
   async #start() {
-    const python = join(ROOT, '.venv/bin/python');
-    if (!existsSync(python)) throw new Error('MLX environment missing. Run ./scripts/haru setup.');
+    const cwd = this.streamDir || ROOT;
+    const python = join(cwd, '.venv/bin/python');
+    if (!existsSync(python)) throw new Error('Model Python environment missing: ' + python);
+    const args = this.streamDir
+      ? [join(cwd, 'discord_bridge.py'), '--socket', this.socketPath]
+      : ['scripts/discord_server.py', this.socketPath, '--language', this.language, '--quantize', this.quantize === null ? 'none' : String(this.quantize)];
+    const env = this.streamDir ? streamEnvironment(ROOT) : modelEnvironment(ROOT);
+    const readyMarker = this.streamDir ? '[bridge] ready' : '[native] ready on';
     this.stopping = false;
-    this.child = spawn(python, ['scripts/discord_server.py', this.socketPath], {
-      cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, HF_HOME: join(ROOT, '.runtime/huggingface'), HF_HUB_OFFLINE: '1', PYTHONUNBUFFERED: '1' },
-    });
+    this.child = spawn(python, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env });
     const child = this.child;
     await new Promise((resolve, reject) => {
       let tail = '';
       const timeout = setTimeout(() => {
         child.kill('SIGTERM');
-        reject(new Error('Haru startup exceeded 120 seconds. Check the local model cache.'));
+        reject(new Error('Model startup exceeded 120 seconds. Check the local model cache.'));
       }, 120_000);
       const onData = data => {
         if (this.child !== child || this.stopping) return;
         tail = (tail + data.toString()).slice(-4000);
-        if (!this.ready && tail.includes('[native] ready on')) {
+        if (!this.ready && tail.includes(readyMarker)) {
           this.ready = true;
           clearTimeout(timeout);
           resolve();
@@ -59,8 +68,8 @@ export class HaruServer extends EventEmitter {
         const wasReady = this.ready;
         this.ready = false;
         this.pending = null;
-        if (!wasReady) reject(new Error(`Haru startup failed (${code ?? signal}). ${tail.slice(-1200)}`));
-        else if (!this.stopping) this.emit('error', new Error(`Haru server stopped (${code ?? signal}).`));
+        if (!wasReady) reject(new Error(`Model startup failed (${code ?? signal}). ${tail.slice(-1200)}`));
+        else if (!this.stopping) this.emit('error', new Error(`Model server stopped (${code ?? signal}).`));
       });
     });
   }

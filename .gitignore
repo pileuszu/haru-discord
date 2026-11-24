@@ -1,11 +1,38 @@
-.venv/
-.runtime/
-artifacts/
+# Local credentials and search keys
 .env
 .env.*
 !.env.example
+*.key
+
+# Installed dependencies and build caches
+node_modules/
+.venv/
+.venv-*/
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.ruff_cache/
 .DS_Store
-node_modules/
+
+# Bot state, local model checkouts and evaluation artifacts
+.runtime/
+.models/
+artifacts/
 *.log
+*.gguf
+*.safetensors
+*.ckpt
+*.pth
+
+# Local datasets, recordings and reference voices
+/datasets/
+/data/
+/recordings/
+*.zip
+*.wav
+*.flac
+*.pcm
+*.s16
+*.opus
+*.mp3
+*.ogg

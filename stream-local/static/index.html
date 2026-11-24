@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Stream · 실시간 텍스트 대화</title>
+  <style>
+    :root {
+      --page: #f7f8f4; --ink: #202b26; --muted: #59665e; --line: #d0d7cf;
+      --pine: #215c46; --deep: #172f27; --mint: #a0dbc0;
+      --sans: "Inter", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+    .frame { width: min(100% - clamp(32px, 8vw, 120px), 1280px); margin-inline: auto; }
+    .top { border-bottom: 1px solid var(--line); }
+    .nav, .brand, .model-line, .connection, .pane-heading, .pane-footer, .actions, .button {
+      display: flex; align-items: center;
+    }
+    .nav { min-height: 72px; justify-content: space-between; gap: 14px; }
+    .brand { gap: 10px; font-size: 22px; font-weight: 730; letter-spacing: -.07em; }
+    .brand-mark { display: grid; grid-template-columns: repeat(3, 4px); gap: 3px; align-items: center; height: 26px; transform: skewY(-16deg); }
+    .brand-mark i { width: 4px; height: 13px; border-radius: 3px; background: var(--pine); }
+    .brand-mark i:nth-child(2) { height: 23px; }
+    .model-line { gap: 14px; }
+    .model { min-height: 34px; max-width: 46vw; padding: 0 6px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:var(--page); font:12px var(--mono); }
+    .model:focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
+    .connection { gap: 8px; color: var(--muted); font-size: 13px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #8c958d; flex-shrink: 0; }
+    body[data-state="ready"] .dot, body[data-state="running"] .dot, body[data-state="waiting"] .dot, body[data-state="stopped"] .dot { background: #247b50; }
+    body[data-state="loading"] .dot { background: #a76f23; }
+    body[data-state="error"] .dot { background: #a64136; }
+    main { padding-top: clamp(34px, 7vh, 72px); padding-bottom: 35px; }
+    .intro { display:flex; align-items:flex-end; justify-content:space-between; gap:22px; margin-bottom: 28px; }
+    h1 { margin:0; font-size: clamp(31px, 3.7vw, 50px); line-height:1.16; letter-spacing: -.065em; font-weight:680; }
+    .intro p { margin:12px 0 0; color:var(--muted); font-size:15px; line-height:1.65; word-break:keep-all; }
+    .button { align-self: flex-end; flex-shrink:0; justify-content:center; gap:10px; min-height:44px; padding: 0 18px;
+      font:600 14px var(--sans); color:#fff; background:var(--pine); border:1px solid var(--pine); border-radius:8px; cursor:pointer; }
+    .button:hover:enabled { background: #174b38; }
+    .button:disabled { opacity:.6; cursor:wait; }
+    .button:focus-visible { outline:3px solid #67a58b; outline-offset:3px; }
+    .button-icon { width:0; height:0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 8px solid currentColor; }
+    .button[data-action="stop"] .button-icon { border:0; width:9px; height:9px; border-radius:1px; background:currentColor; }
+    .panes { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .pane { display:flex; flex-direction:column; min-width:0; height:clamp(370px, 50vh, 570px);
+      padding: 0 clamp(18px, 2.25vw, 32px); background:#fff; border:1px solid var(--line); border-radius:12px; }
+    .pane.input:focus-within { border-color:#58836e; box-shadow:0 0 0 2px #58836e1a; }
+    .pane.output { color:#f0f7f1; background:var(--deep); border-color:var(--deep); }
+    .pane-heading { gap:10px; min-height:65px; margin:0; border-bottom:1px solid #e3e8e2; font-size:16px; font-weight:650; letter-spacing:-.04em; }
+    .output .pane-heading { border-color:#3c5148; }
+    .output-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; border-bottom:1px solid #3c5148; }
+    .output-heading .pane-heading { border:0; }
+    .voice-button { background:transparent; border:1px solid #789287; border-radius:6px; padding:6px 10px;
+      color:#c5d6cc; font:500 12px var(--sans); cursor:pointer; }
+    .voice-button[aria-pressed="true"] { color:#ccf5dc; border-color:#8bbaa0; }
+    .voice-button:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+    .voice-button:disabled { opacity:.65; cursor:wait; }
+    .voice-note { color:#e6d5a9; margin:0; padding:6px 0; font-size:12px; }
+    .symbol { font: bold 18px var(--mono); color:var(--pine); }
+    .waves { display:inline-flex; align-items:center; gap:2px; height:16px; }
+    .waves i { width:3px; height:7px; border-radius:2px; background:var(--mint); }
+    .waves i:nth-child(2) { height:13px; }
+    .waves i:nth-child(3) { height:9px; }
+    .editor, .transcript { display:block; flex:1; min-height:0; min-width:0; width:100%; margin:0; padding:22px 0;
+      font:400 clamp(17px, 1.5vw, 21px)/1.65 var(--sans); letter-spacing:-.026em; overflow-y:auto; }
+    .editor { border:0; border-radius:0; resize:none; outline:none; background:transparent; color:var(--ink); caret-color:var(--pine); }
+    .editor::placeholder { color:#78847b; opacity:1; }
+    .transcript { white-space:pre-wrap; overflow-wrap:anywhere; color:inherit; }
+    .transcript:empty::before { content: attr(data-placeholder); color: #a2b4aa; }
+    .pane-footer { min-height:45px; justify-content:space-between; flex-wrap:wrap; gap:4px 8px; padding:6px 0; border-top:1px solid #e3e8e2; font-size:12px; color:var(--muted); }
+    .output .pane-footer { border-color:#3c5148; color:#b0c1b6; }
+    .value { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+    .notice { margin:16px 0 0; min-height:1.5em; font-size:13px; line-height:1.6; color:var(--muted); overflow-wrap:anywhere; }
+    body[data-state="error"] .notice { color:#933c35; }
+    @media (max-width:760px) {
+      .frame { width:min(100% - 32px, 610px); }
+      .nav { min-height:60px; }
+      main { padding-top:29px; }
+      .intro { align-items:flex-start; flex-direction:column; gap:16px; margin-bottom:18px; }
+      .button { align-self:flex-start; }
+      .panes { grid-template-columns:1fr; gap:12px; }
+      .pane { height:clamp(210px, 30dvh, 320px); }
+      .pane-heading { min-height:49px; }
+      .editor, .transcript { padding:13px 0; }
+      .pane-footer { min-height:34px; }
+    }
+    @media (max-width:430px) {
+      .model-line { gap:8px; } .model { font-size:10px; padding-left:8px; } .brand { gap:6px; }
+      .connection { font-size:11px; gap:5px; }
+    }
+  </style>
+</head>
+<body data-state="connecting">
+  <header class="top"><div class="frame nav">
+    <div class="model-line"><div class="brand" lang="en"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>Stream</div>
+      <select id="model" class="model" aria-label="대화 모델">
+        <option value="minicpm-duplex">MiniCPM-duplex 2.4B</option>
+        <option value="stream-qwen3-8b">Stream-Qwen3-8B</option>
+        <option value="gemma-local">Gemma 4 E4B · 대화</option>
+      </select>
+    </div>
+    <div class="connection"><span class="dot" aria-hidden="true"></span><span id="status" role="status">연결 중</span></div>
+  </div></header>
+  <main class="frame">
+    <div class="intro">
+      <div><h1>실시간 텍스트 대화</h1><p id="chat-help">타이핑한 글이 순서대로 전달됩니다. AI가 답을 쓰는 동안에도 정정할 내용을 이어서 입력하세요.</p></div>
+      <button class="button" id="session" type="button" disabled><span class="button-icon" aria-hidden="true"></span><span id="session-label">세션 시작</span></button>
+    </div>
+    <div class="panes">
+      <section class="pane input" aria-labelledby="input-label">
+        <h2 class="pane-heading"><span class="symbol" aria-hidden="true">›_</span><label id="input-label" for="draft">내 입력</label></h2>
+        <textarea class="editor" id="draft" placeholder="여기에 입력하세요…" spellcheck="false"></textarea>
+        <div class="pane-footer"><span>내가 쓴 글 <span class="value" id="typed">0</span>자</span><span><span id="consumed-label">모델에 전달</span> <span class="value" id="consumed">0</span>자</span><span id="input-pending" hidden></span></div>
+      </section>
+      <section class="pane output" aria-labelledby="reply-label">
+        <div class="output-heading">
+          <h2 class="pane-heading" id="reply-label"><span class="waves" aria-hidden="true"><i></i><i></i><i></i></span>AI 답변</h2>
+          <button type="button" class="voice-button" id="voice" aria-label="유나 음성" aria-pressed="true" hidden>유나 음성 켜짐</button>
+        </div>
+        <div class="transcript" id="reply" role="region" aria-labelledby="reply-label" tabindex="0" data-placeholder="답변이 여기에 표시됩니다."></div>
+        <p id="voice-note" class="voice-note" role="status" hidden></p>
+        <div class="pane-footer"><span id="output-status">대기 중</span><span>답변 <span class="value" id="reply-count">0</span>자</span><span>모델 단계 <span class="value" id="rows">0</span></span></div>
+      </section>
+    </div>
+    <p id="notice" class="notice" role="status"></p>
+  </main>
+  <script>
+    (() => {
+      'use strict';
+      const byId = id => document.getElementById(id);
+      const draft = byId('draft');
+      const reply = byId('reply');
+      const session = byId('session');
+      const model = byId('model');
+      const duplexHelp = byId('chat-help').textContent;
+      const titles = {connecting:'연결 중', ready:'로컬 서버 연결됨', loading:'모델 준비 중', running:'세션 진행 중', waiting:'입력 대기 중', stopped:'세션 종료', error:'연결 확인 필요'};
+      const statusText = {connecting:'대기 중', ready:'대기 중', loading:'모델 준비 중', running:'답변 대기 중', waiting:'입력 대기 중', stopped:'종료됨', error:'중단됨'};
+      const phaseText = {reading:'입력 읽는 중', awaiting:'답변 대기 중', writing:'답변 출력 중'};
+      const noOutputNotice = '모델이 이번 입력에 답변을 출력하지 않았습니다. 이어서 입력할 수 있습니다.';
+      let socket, state = 'connecting', confirmed = '', locked = '', composing = false, sentDraft = null, starting = false, stopping = false;
+      let active = false, preferNewDraft = false;
+      let editOverlapsSpeech = false;
+      let deferredSync = null;
+      let turnOutputStart = 0, wasReading = false;
+      const voiceButton = byId('voice');
+      const voiceNote = byId('voice-note');
+      let reader = null, voiceOrigin = '', playerScript = null, voiceWanted = true;
+      try { voiceWanted = sessionStorage.getItem('stream.yuna') !== 'off'; } catch {}
+      function voiceMessage(text = '') {
+        voiceNote.hidden = !text;
+        voiceNote.textContent = text;
+      }
+      function drawVoiceButton() {
+        voiceButton.hidden = model.value !== 'gemma-local';
+        voiceButton.disabled = !voiceOrigin;
+        voiceButton.setAttribute('aria-pressed', String(voiceWanted));
+        voiceButton.textContent = !voiceWanted ? '유나 음성 꺼짐'
+          : reader?.state === 'speaking' ? '유나 읽는 중' : '유나 음성 켜짐';
+      }
+      function voiceFailed(message) {
+        voiceWanted = false;
+        if (reader?.enabled) reader.disable();
+        drawVoiceButton();
+        voiceMessage(message?.message || message || '유나 음성에 연결하지 못했습니다. 버튼을 눌러 다시 시도하세요.');
+      }
+      function unlockVoice() {
+        if (!voiceWanted || !voiceOrigin || model.value !== 'gemma-local' || !reader) return;
+        if (!reader.enabled || reader.context?.state !== 'running') {
+          reader.enable(reply.textContent).catch(voiceFailed);
+        }
+      }
+      function prepareVoice() {
+        drawVoiceButton();
+        if (!voiceOrigin || !voiceWanted || model.value !== 'gemma-local') return;
+        if (!window.YunaReader) {
+          if (playerScript) return;
+          playerScript = document.createElement('script');
+          playerScript.src = voiceOrigin + '/yuna.js';
+          playerScript.onload = prepareVoice;
+          playerScript.onerror = () => { playerScript.remove(); playerScript = null; voiceFailed(); };
+          document.head.append(playerScript);
+          return;
+        }
+        if (!reader) reader = new window.YunaReader({
+          baseURL: () => voiceOrigin, onError: voiceFailed, onState: drawVoiceButton,
+        });
+        const origin = voiceOrigin;
+        reader.warm().catch(error => {
+          if (voiceWanted && origin === voiceOrigin && model.value === 'gemma-local') voiceFailed(error);
+        });
+        if (navigator.userActivation?.hasBeenActive) unlockVoice();
+      }
+      voiceButton.addEventListener('click', () => {
+        voiceWanted = !voiceWanted;
+        try { sessionStorage.setItem('stream.yuna', voiceWanted ? 'on' : 'off'); } catch {}
+        voiceMessage();
+        if (voiceWanted) { prepareVoice(); unlockVoice(); }
+        else reader?.disable();
+        drawVoiceButton();
+      });
+      draft.addEventListener('pointerdown', unlockVoice);
+      draft.addEventListener('keydown', unlockVoice);
+      const lengthInCharacters = value => Array.from(value).length;
+      function saveView() {
+        try {
+          sessionStorage.setItem('stream.view.' + model.value, JSON.stringify({
+            draft:draft.value, answer:reply.textContent, confirmed, rows:byId('rows').textContent
+          }));
+        } catch {}
+      }
+      function restoreView() {
+        byId('consumed-label').textContent = model.value === 'gemma-local' ? '대화에 반영' : '모델에 전달';
+        byId('chat-help').textContent = model.value === 'gemma-local'
+          ? '유나가 말하는 동안에도 입력하세요. “응, 계속해”에는 말을 이어가고, “그만 말해”에는 멈춥니다.'
+          : duplexHelp;
+        let saved;
+        try { saved = JSON.parse(sessionStorage.getItem('stream.view.' + model.value)); } catch {}
+        draft.value = saved?.draft || '';
+        reply.textContent = saved?.answer || '';
+        confirmed = saved?.confirmed || '';
+        locked = confirmed;
+        byId('rows').textContent = saved?.rows || '0';
+        byId('reply-count').textContent = lengthInCharacters(reply.textContent);
+        preferNewDraft = Boolean(draft.value || reply.textContent);
+        voiceMessage();
+        prepareVoice();
+        counts();
+      }
+      function counts() {
+        byId('typed').textContent = lengthInCharacters(draft.value);
+        byId('consumed').textContent = lengthInCharacters(confirmed);
+        const pending = draft.value.startsWith(confirmed) ? draft.value.slice(confirmed.length) : '';
+        const count = lengthInCharacters(pending);
+        let hint = '';
+        if (composing) hint = '글자 조합 중';
+        else if (count && !pending.trim() && state === 'waiting') hint = `공백 ${count}자 대기`;
+        else if (count) hint = `미전달 ${count}자`;
+        byId('input-pending').textContent = hint;
+        byId('input-pending').hidden = !hint;
+      }
+      function setState(next, message = '') {
+        state = next;
+        document.body.dataset.state = next;
+        byId('status').textContent = titles[next] || next;
+        byId('output-status').textContent = statusText[next] || next;
+        reply.dataset.placeholder = next === 'running' ? '모델이 아직 답변 글자를 출력하지 않았습니다.' : '답변이 여기에 표시됩니다.';
+        draft.readOnly = next === 'stopped' || stopping;
+        const canStop = active && ['running','loading','waiting'].includes(next);
+        model.disabled = active || starting || stopping;
+        model.title = model.disabled ? '세션을 종료하면 모델을 변경할 수 있습니다.' : '대화 모델 선택';
+        session.disabled = stopping || next === 'connecting' || (next === 'loading' && !canStop);
+        session.dataset.action = canStop ? 'stop' : 'start';
+        byId('session-label').textContent = stopping ? '종료 중…' : canStop ? '세션 종료' : next === 'stopped' ? '새 세션 시작' : next === 'error' ? '다시 연결' : '세션 시작';
+        byId('notice').textContent = message;
+        counts();
+      }
+      function send(message) {
+        if (socket?.readyState !== WebSocket.OPEN) return false;
+        socket.send(JSON.stringify(message));
+        return true;
+      }
+      function flushInput() {
+        if (composing || stopping || !active) return;
+        if (draft.value === sentDraft) return;
+        if (!draft.value.slice(confirmed.length).trim()) editOverlapsSpeech = false;
+        else if (reader?.state === 'speaking') editOverlapsSpeech = true;
+        if (send({type:'input', text:draft.value, speech_overlap:editOverlapsSpeech})) {
+          sentDraft = draft.value;
+          if (draft.value.slice(confirmed.length).trim() && byId('notice').textContent === noOutputNotice) {
+            byId('notice').textContent = '';
+          }
+        }
+      }
+      function begin() {
+        if (active || starting) return;
+        if (!send({type:'start', model:model.value, seed:42})) return;
+        active = starting = true;
+        stopping = false;
+        if (preferNewDraft) draft.value = '';
+        preferNewDraft = false;
+        confirmed = '';
+        editOverlapsSpeech = false;
+        locked = '';
+        deferredSync = null;
+        sentDraft = null;
+        reply.textContent = '';
+        reader?.reset('');
+        unlockVoice();
+        turnOutputStart = 0;
+        wasReading = false;
+        byId('reply-count').textContent = '0';
+        byId('rows').textContent = '0';
+        counts();
+        setState('loading');
+        flushInput();
+      }
+      function applyConfirmed(text) {
+        if (draft.value.startsWith(text)) return;
+        // Keep a new edit that crossed an already accepted character in flight.
+        let offset = 0;
+        while (offset < text.length && offset < draft.value.length && text[offset] === draft.value[offset]) offset++;
+        const suffix = draft.value.slice(offset);
+        draft.value = text + suffix;
+        byId('notice').textContent = '이미 전달된 글 뒤에 수정 내용을 이어 붙였습니다.';
+      }
+      function handleRow(row) {
+        if (!active) return;
+        if (!stopping) reader?.row(row);
+        const offset = Number.isInteger(row.consumed) ? row.consumed : confirmed.length;
+        const prefix = typeof row.input === 'string' && row.input.length === offset ? row.input : (sentDraft ?? draft.value).slice(0, offset);
+        const readMore = prefix.length > confirmed.length && prefix.startsWith(confirmed);
+        if (readMore && !wasReading && row.speech_action !== 'continue' && row.speech_action !== 'listen') {
+          turnOutputStart = reply.textContent.length;
+        }
+        wasReading = readMore;
+        if (prefix.length >= confirmed.length && prefix.startsWith(confirmed)) confirmed = prefix;
+        if (!composing && !draft.value.slice(confirmed.length).trim()) editOverlapsSpeech = false;
+        if (confirmed.startsWith(locked)) locked = confirmed;
+        const visible = typeof row.output === 'string' && row.output.trim() ? row.output : '';
+        if (visible !== reply.textContent) {
+          const atEnd = reply.scrollHeight - reply.scrollTop - reply.clientHeight < 40;
+          reply.textContent = visible;
+          byId('reply-count').textContent = lengthInCharacters(visible);
+          if (atEnd) reply.scrollTop = reply.scrollHeight;
+        }
+        const legacyPhase = visible.slice(turnOutputStart).trim() ? 'writing' : readMore ? 'reading' : 'awaiting';
+        byId('output-status').textContent = row.speech_action === 'continue' ? '맞장구 반영'
+          : phaseText[row.phase] || phaseText[legacyPhase];
+        byId('rows').textContent = String(row.row ?? 0);
+        counts();
+        saveView();
+      }
+      function syncDraft(msg) {
+        if (!active || typeof msg.text !== 'string' || typeof msg.input !== 'string') return;
+        if (composing) { deferredSync = msg; return; }
+        if (msg.input.startsWith(locked)) locked = msg.input;
+        if (draft.value === msg.rejected) {
+          const previousCaret = draft.selectionStart;
+          draft.value = sentDraft = msg.text;
+          if (!draft.value.slice(msg.input.length).trim()) editOverlapsSpeech = false;
+          const nextCaret = Math.max(locked.length, Math.min(draft.value.length, previousCaret));
+          draft.setSelectionRange(nextCaret, nextCaret);
+          byId('notice').textContent = '수정한 부분이 먼저 모델에 전달되어, 마지막으로 반영된 글을 복원했습니다.';
+        }
+        counts();
+      }
+      function connect(useUpgradeWorker = false) {
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) socket.close();
+        const address = new URL('/ws', location.href);
+        address.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        if (useUpgradeWorker) address.port = '8771';
+        reader?.disable();
+        voiceOrigin = '';
+        drawVoiceButton();
+        const channel = new WebSocket(address);
+        socket = channel;
+        setState('connecting');
+        channel.onmessage = event => {
+          if (socket !== channel) return;
+          let msg;
+          try { msg = JSON.parse(event.data); } catch { return; }
+          // A running older server can finish its active conversation. Once
+          // the primary serves the new protocol, new tabs use it directly.
+          if (msg.type === 'status' && msg.state === 'ready' && !msg.speech_overlap &&
+              location.origin === 'http://127.0.0.1:8767') {
+            if (useUpgradeWorker) {
+              setState('error', '새 Gemma 실행기에 연결할 수 없습니다.');
+              channel.close();
+            } else {
+              connect(true);
+            }
+            return;
+          }
+          if (msg.type === 'row') { handleRow(msg); return; }
+          if (msg.type === 'sync') { syncDraft(msg); return; }
+          if (msg.type === 'error') {
+            reader?.reset(reply.textContent);
+            active = starting = stopping = false;
+            setState('error', msg.message || '모델 실행 중 오류가 발생했습니다.');
+          } else if (msg.type === 'status' && Object.hasOwn(titles, msg.state)) {
+            if (msg.state === 'ready' && active) return;
+            if (msg.state === 'ready' && msg.yuna_tts) {
+              voiceOrigin = new URL(channel.url).origin.replace(/^ws/, 'http');
+              prepareVoice();
+            }
+            if (msg.state === 'running' || msg.state === 'waiting') { starting = false; active = true; }
+            if (msg.state === 'waiting' && !stopping) reader?.finish();
+            if (msg.state === 'stopped') {
+              reader?.reset(reply.textContent);
+              active = starting = stopping = false;
+              preferNewDraft = true;
+              saveView();
+            }
+            if (msg.state === 'running') {
+              turnOutputStart = reply.textContent.length;
+              wasReading = false;
+            }
+            const legacyNoOutput = !msg.reason && state === 'running' && !reply.textContent.slice(turnOutputStart).trim();
+            const noOutput = msg.state === 'waiting' && (msg.reason === 'no_output' || legacyNoOutput);
+            if (msg.state === 'ready' && preferNewDraft) {
+              setState('stopped');
+              return;
+            }
+            setState(msg.state, noOutput ? noOutputNotice : msg.message || '');
+            if (msg.state === 'ready' && draft.value && !composing && !preferNewDraft) begin();
+            if (msg.state === 'running') flushInput();
+          }
+        };
+        channel.onclose = () => {
+          if (socket !== channel) return;
+          reader?.disable();
+          voiceOrigin = '';
+          drawVoiceButton();
+          if (active) {
+            saveView();
+            preferNewDraft = Boolean(draft.value || reply.textContent);
+          }
+          active = starting = stopping = false;
+          if (state !== 'error') setState('error', '로컬 서버 연결이 끊겼습니다. 다시 연결해 주세요.');
+        };
+      }
+      session.addEventListener('click', () => {
+        if (state === 'error') { connect(); return; }
+        if (active) {
+          if (send({type:'stop'})) { reader?.reset(reply.textContent); stopping = true; setState(state); }
+        } else { begin(); draft.focus(); }
+      });
+      model.addEventListener('change', () => {
+        reader?.disable();
+        try { sessionStorage.setItem('stream.model', model.value); } catch {}
+        restoreView();
+        if (state === 'stopped' || state === 'ready') setState(preferNewDraft ? 'stopped' : 'ready');
+      });
+      draft.addEventListener('beforeinput', event => {
+        if (!active || composing || event.isComposing || !locked.length) return;
+        const start = draft.selectionStart;
+        const backspace = event.inputType.startsWith('delete') && event.inputType.endsWith('Backward') && start === draft.selectionEnd;
+        if (start < locked.length || (backspace && start === locked.length)) {
+          event.preventDefault();
+          byId('notice').textContent = '이미 모델에 전달된 글은 유지됩니다. 수정할 내용을 뒤에 이어서 입력하세요.';
+        }
+      });
+      function edited() {
+        counts();
+        if (composing) return;
+        if (state === 'stopped') return;
+        if (active) applyConfirmed(locked);
+        if (state === 'ready' && draft.value) begin();
+        flushInput();
+      }
+      draft.addEventListener('compositionstart', () => {
+        composing = true;
+        unlockVoice();
+        if (reader?.state === 'speaking') editOverlapsSpeech = true;
+        counts();
+      });
+      draft.addEventListener('compositionend', () => {
+        composing = false;
+        if (deferredSync) { syncDraft(deferredSync); deferredSync = null; }
+        if (!draft.value.slice(confirmed.length).trim()) editOverlapsSpeech = false;
+        edited();
+      });
+      draft.addEventListener('input', event => { if (event.isComposing) counts(); else edited(); });
+      try {
+        const selected = new URLSearchParams(location.search).get('model') || sessionStorage.getItem('stream.model');
+        if (Array.from(model.options).some(option => option.value === selected)) model.value = selected;
+      } catch {}
+      restoreView();
+      window.addEventListener('pagehide', () => { reader?.disable(); saveView(); });
+      connect();
+    })();
+  </script>
+</body>
+</html>
